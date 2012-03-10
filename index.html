@@ -1,0 +1,480 @@
+<!doctype html>
+<html>
+<head>
+<title>HTML and Canvas STG Game test</title>
+<style> 
+body {
+  margin:0 auto;
+  color: #FFF;
+  background-color: #000;
+}
+#switch a {
+  color: #CCF
+}
+#sjs {
+background-image:url('http://down.touhou8.com/filestores/2011/03/17/9e869b634c6deaf00cea547f3593fbca.jpg');
+border: 1px #333 solid;
+margin: auto;
+}
+</style>
+</head>
+<body>
+<div>
+<p id="switch">
+<a href="?canvas=1" id="canvas-mode">Use canvas backend.</a>
+<a href="?html=1" id="html-mode">Use HTML backend.</a>
+</p>
+<table style="float: left;">
+<tr><td>render mode</td><td><span id="renderMode"></span></td></tr>
+<tr><td>bullets count</td><td><span id="bulletsCount"></span></td></tr>
+<tr><td>system load</td><td><span id="statusLoad"></span></td></tr>
+<tr><td>FPS</td><td><span id="fps"></span></td></tr>
+<tr><td>X</td><td><span id="posX"></span></td></tr>
+<tr><td>Y</td><td><span id="posY"></span></td></tr>
+<tr><td>debug text</td><td><span id="debugText"></span></td></tr>
+</table>
+</div>
+</body>
+<script src="http://batiste.dosimple.ch/sprite.js/sprite.js"></script>
+<script>
+var posX
+var posY
+var statusLoad
+var bulletsCount
+var debugText
+var renderMode
+var fps
+window.onload = function(){
+  renderMode = document.getElementById('renderMode')
+  posX = document.getElementById('posX')
+  posY = document.getElementById('posY')
+  statusLoad = document.getElementById('statusLoad')
+  fps = document.getElementById('fps')
+  bulletsCount = document.getElementById('bulletsCount')
+  debugText = document.getElementById('debugText')
+  if(window.location.href.indexOf('canvas') != -1) {
+    renderMode.innerHTML = 'canvas'
+    document.getElementById('canvas-mode').style.display = 'none'
+    Game.USE_CANVAS = true
+  } else {
+    renderMode.innerHTML = 'HTML'
+    document.getElementById('html-mode').style.display = 'none'
+    Game.USE_CANVAS = false
+  }
+  var imageList =[]
+  for(var key in Game.IMAGE_SOURCE) {
+    imageList.push(Game.IMAGE_SOURCE[key])
+  }
+  scene = sjs.Scene({w:Game.WIDTH, h:Game.HEIGHT})
+  scene.loadImages(imageList, function() { Game.boot(scene) })
+}
+var Game = {}
+Game.WIDTH = 300
+Game.HEIGHT = 400
+Game.HALF_WIDTH = Game.WIDTH / 2
+Game.BORDER = 32
+Game.FRAME_INTERVAL = 18
+Game.IMAGE_SOURCE = {
+  player: 'http://down.touhou8.com/filestores/2011/03/16/2495602b824e3033d329a5d973c41228.png',
+  bullet: 'http://down.touhou8.com/filestores/2011/03/16/b1a201fceab41f6147d86a2e32a1fceb.png',
+  magic: 'http://down.touhou8.com/filestores/2011/03/17/73465ff7a198098f03f10edd6b4c2cfe.png'
+}
+Game.SPEED_MOVE = 4
+Game.SPEED_SLOW_MOVE = 2
+Game.TICK_BEGIN = 60
+Game.USE_CANVAS = false
+Game.scene = null
+Game.boot = function(scene) {
+  this.scene = scene
+  var playerLayer = this.scene.Layer('playerLayer',{useCanvas: false})
+  var bulletLayer = this.scene.Layer('bulletLayer',{useCanvas: this.USE_CANVAS})
+  var judgeLayer = this.scene.Layer('judgeLayer',{useCanvas: false})
+  this.player.init(playerLayer, judgeLayer)
+  this.keyboard.init()
+  this.Bullet.init(bulletLayer)
+  this.bullets = []
+  this.ticker = this.scene.Ticker(function() { Game.mainLoop() })
+  this.ticker.run()
+}
+var angle = 0
+var angleSpeed = 0
+var testA = 0
+var testB = Math.PI / 3
+function newBullet1(x, y, speed, angle) {
+  return new Game.Bullet(x, y, speed, angle,
+    {
+      start: {size:32, x: 32 * 3, y: 16 * 13},
+      normal: {size:16, x: 16 * 6, y: 16 * 7},
+      end: {size:8, x: 8 * 5, y: 8 * 30}
+    })
+}
+Game.mainLoop = function() {
+  
+  if(this.ticker.currentTick % 10 == 0) {
+    posX.innerHTML = this.player.x
+    posY.innerHTML = this.player.y
+    statusLoad.innerHTML = this.ticker.load
+    fps.innerHTML = this.ticker.fps
+    bulletsCount.innerHTML = this.bullets.length
+  }
+  
+  //if(Game.ticker.currentTick % 100 == 0) {
+  angleSpeed = Math.PI * testA++ / 1000
+  if(testA >= 1000) testA = 0
+  angle += angleSpeed
+  for(var i=0; i<6; ++i) {
+    var angle1 = angle + testB * i
+    var x = 0 + Math.sin(angle1) * 6
+    var y = 120 + Math.cos(angle1) * 6
+    Game.bullets.push(newBullet1(x, y, 4, angle + testB * i))
+  }
+  //}
+  
+  for(var i=0; i<Game.bullets.length; ++i) {
+    var bullet = Game.bullets[i]
+    if(!bullet.update()) {
+      Game.bullets.splice(i, 1)
+      i--
+    }
+  }
+  
+  this.player.update()
+}
+Game.clearBullet = function(x, y) {
+  for(var i=0; i<Game.bullets.length; ++i) {
+    var bullet = Game.bullets[i]
+    var player = Game.player
+    var dx = bullet.x - player.x
+    var dy = bullet.y - player.y
+    var length = Math.sqrt(dx * dx + dy * dy)
+    bullet.setLifetime(Math.ceil(length / 16))
+  }
+}
+Game.player = {}
+Game.player.init = function(playerLayer, judgeLayer) {
+  this.HALF_WIDTH = 16
+  this.HALF_HEIGHT = 24
+  this.SPEED = Game.SPEED_MOVE
+  this.SPEED_LEAN = Math.ceil(this.SPEED / 1.414)
+  this.SPEED_SLOW = Game.SPEED_SLOW_MOVE
+  this.SPEED_SLOW_LEAN = Math.ceil(this.SPEED_SLOW / 1.414)
+  this.X_MAX_LIMIT = Game.HALF_WIDTH - Game.BORDER
+  this.X_MIN_LIMIT = -this.X_MAX_LIMIT
+  this.Y_MAX_LIMIT = Game.HEIGHT - Game.BORDER
+  this.Y_MIN_LIMIT = Game.BORDER
+  this.sprite = Game.scene.Sprite(Game.IMAGE_SOURCE.player, playerLayer)
+  this.sprite.size(32, 48)
+  var cycleData_middle = []
+  var cycleData_left = []
+  var cycleData_right = []
+  for(var i=0; i<8; ++i) {
+    cycleData_middle.push([i*32, 0, 2])
+    cycleData_left.push([i*32, 48, 2])
+    cycleData_right.push([i*32, 96, 2])
+  }
+  this.cycle_middle = Game.scene.Cycle(cycleData_middle)
+  this.cycle_left = Game.scene.Cycle(cycleData_left)
+  this.cycle_right = Game.scene.Cycle(cycleData_right)
+  this.cycle_middle.sprites = [this.sprite]
+  this.cycle_left.sprites = [this.sprite]
+  this.cycle_right.sprites = [this.sprite]
+  this.cycle_left.repeat = false
+  this.cycle_right.repeat = false
+  this.cycle = this.cycle_middle
+  this.sprite_judge = Game.scene.Sprite(Game.IMAGE_SOURCE.magic, judgeLayer)
+  this.sprite_judge.size(64, 64)
+  this.sprite_judge.offset(0, 16)
+  this.sprite_explode = Game.scene.Sprite(Game.IMAGE_SOURCE.magic, judgeLayer)
+  this.sprite_explode.size(64, 64)
+  this.sprite_explode.offset(64 * 2, 16)
+  this.lastMoveX = 0
+
+  this.reset()
+}
+Game.player.reset = function() {
+  this.update = this.update_begin
+  this.cycle = this.cycle_middle
+  this.dead = true
+  this.tick_begin = Game.TICK_BEGIN
+  this.x = 0 
+  this.y = Game.HEIGHT + Game.BORDER
+  this.sprite.setX(this.x + Game.HALF_WIDTH - this.HALF_WIDTH)
+  this.sprite.setY(this.y - this.HALF_HEIGHT)
+  this.sprite.setOpacity(1)
+  this.sprite.update()
+  this.sprite_judge.setX(-64)
+  this.sprite_judge.setY(-64)
+  this.sprite_judge.update()
+  this.sprite_explode.setX(-64)
+  this.sprite_explode.setY(-64)
+  this.sprite_explode.update()
+  
+}
+Game.player.update_begin = function() {
+  this.y -= 4
+  this.sprite.move(0, -4)
+  if(this.sprite.opacity == 1)
+    this.sprite.setOpacity(0)
+  else
+    this.sprite.setOpacity(1)
+  this.cycle.next(Game.ticker.lastTicksElapsed)
+  this.sprite.update()
+  if(this.y <= Game.HEIGHT - Game.BORDER * 2) {
+    this.update = this.update_normal
+  }
+}
+Game.player.update_normal = function() {
+  if(this.tick_begin > 0) {
+    if(this.sprite.opacity == 1)
+      this.sprite.setOpacity(0)
+    else
+      this.sprite.setOpacity(1)
+    --this.tick_begin
+  } else if(this.tick_begin == 0) {
+    this.sprite.setOpacity(1)
+    this.dead = false
+    --this.tick_begin
+  }
+  var mx = 0
+  var my = 0
+  var keys = Game.keyboard.keys
+  if(keys.right) ++mx
+  if(keys.left) --mx
+  if(keys.down) ++my
+  if(keys.up) --my
+  var lastMoveX = this.lastMoveX
+  this.lastMoveX = mx
+  var speed
+  if(keys.shift)
+    speed = (mx != 0 && my != 0) ? this.SPEED_SLOW_LEAN : this.SPEED_SLOW
+  else
+    speed = (mx != 0 && my != 0) ? this.SPEED_LEAN : this.SPEED
+  var dx = mx * speed
+  var dy = my * speed
+  if(mx < 0 && this.x + dx < this.X_MIN_LIMIT) {
+    dx = this.X_MIN_LIMIT - this.x
+    mx = 0
+  } else if(mx > 0 && this.x + dx > this.X_MAX_LIMIT) {
+    dx = this.X_MAX_LIMIT - this.x
+    mx = 0
+  }
+  if(my < 0 && this.y + dy < this.Y_MIN_LIMIT) {
+    dy = this.Y_MIN_LIMIT - this.y
+  } else if(my > 0 && this.y + dy > this.Y_MAX_LIMIT) {
+    dy = this.Y_MAX_LIMIT - this.y
+  }
+  this.x += dx
+  this.y += dy
+
+  this.sprite.move(dx, dy)
+  if(mx != 0 && lastMoveX != mx) {
+    this.cycle = mx > 0 ? this.cycle_right : this.cycle_left
+    this.cycle.reset()
+  } else if(mx == 0) {
+    this.cycle = this.cycle_middle
+  }
+  
+  this.cycle.next(Game.ticker.lastTicksElapsed)
+  this.sprite.update()
+  if(keys.shift) {
+    this.sprite_judge.setX(this.x - 32 + Game.HALF_WIDTH)
+    this.sprite_judge.setY(this.y - 32)
+    this.sprite_judge.rotate(Math.PI / 60)
+    this.sprite_judge.update()
+    this.last_shift = true
+  } else {
+    this.sprite_judge.setX(-64)
+    this.sprite_judge.setY(-64)
+    if(this.last_shift) {
+      this.sprite_judge.update()
+      this.last_shift = undefined
+    }
+  }
+}
+var missNum = 0
+Game.player.hit = function() {
+  if(this.dead) return
+  this.dead = true
+  debugText.innerHTML = ++missNum
+  this.tick_die = 0
+  this.sprite.setX(-64)
+  this.sprite.setY(-64)
+  this.sprite.update()
+  this.sprite_explode.scale(0, 0)
+  this.sprite_explode.setX(this.x - 32 + Game.HALF_WIDTH)
+  this.sprite_explode.setY(this.y - 32)
+  this.sprite_judge.setX(this.x - 32 + Game.HALF_WIDTH)
+  this.sprite_judge.setY(this.y - 32)
+  this.update = this.update_die
+}
+Game.player.update_die = function() {
+  if(this.tick_die < 10) {
+    var explode_progress = this.tick_die / 10
+    this.sprite_explode.scale(explode_progress, explode_progress)
+    this.sprite_explode.setOpacity(1 - explode_progress)
+    this.sprite_explode.update()
+  } else if(this.tick_die == 10) {
+    this.sprite_explode.setX(-64)
+    this.sprite_explode.setY(-64)
+    this.sprite_explode.update()
+    Game.clearBullet(this.x, this.y)
+  } else if(this.tick_die == 30) {
+    this.reset()
+  } else {
+    this.sprite_judge.rotate(Math.PI / 60)
+    this.sprite_judge.update()
+  }
+  ++this.tick_die
+}
+
+Game.Bullet = function(x, y, speed, angle, tile, size, func) {
+  this.x = x
+  this.y = y
+  this.speed = speed
+  this.angle = angle
+  this.vx = Math.sin(angle) * speed
+  this.vy = Math.cos(angle) * speed
+  this.tile = tile ? tile : this.tile
+  this.size = size ? size : this.size
+  this.func_normal = func ? func : this.func_normal
+  this.appear()
+}
+Game.Bullet.init = function(bulletLayer) {
+  Game.Bullet.layer = bulletLayer
+}
+Game.Bullet.prototype.tile = {
+  start: {size:32, x: 32 * 0, y: 16 * 13},
+  normal: {size:8, x: 8 * 0, y: 8 * 30},
+  end: {size:8, x: 8 * 0, y: 8 * 30}
+}
+Game.Bullet.prototype.size = 3
+Game.Bullet.prototype.func_normal = function() {
+  this.x += this.vx
+  this.y += this.vy
+  this.sprite.move(this.vx, this.vy)
+  if(Math.abs(this.x - Game.player.x) < this.size &&
+    Math.abs(this.y - Game.player.y) < this.size) {
+    Game.player.hit()
+    this.disapear()
+  }
+  return true
+}
+Game.Bullet.prototype.X_MAX_LIMIT = Game.HALF_WIDTH + Game.BORDER
+Game.Bullet.prototype.X_MIN_LIMIT = -(Game.HALF_WIDTH + Game.BORDER)
+Game.Bullet.prototype.Y_MAX_LIMIT = Game.HEIGHT + Game.BORDER
+Game.Bullet.prototype.Y_MIN_LIMIT = -Game.BORDER
+Game.Bullet.prototype.START_TIME = 16
+Game.Bullet.prototype.END_TIME = 10
+Game.Bullet.prototype.appear = function() {
+  this.sprite = Game.scene.Sprite(Game.IMAGE_SOURCE.bullet, Game.Bullet.layer)
+  var tile_start = this.tile.start
+  this.sprite.size(tile_start.size, tile_start.size)
+  this.sprite.offset(tile_start.x, tile_start.y)
+  var halfTileSize = tile_start.size / 2
+  this.sprite.setX(this.x - halfTileSize + Game.HALF_WIDTH)
+  this.sprite.setY(this.y - halfTileSize)
+  this.sprite.setOpacity(0)
+  this.tick_start = 0
+  this.func = this.func_start
+}
+Game.Bullet.prototype.func_start = function(tile) {
+  ++this.tick_start
+  var startProgress  = this.tick_start / this.START_TIME
+  var scale = 1 - startProgress * this.tile.normal.size /this.tile.start.size
+  this.sprite.scale(scale, scale)
+  this.sprite.setOpacity(startProgress)
+  var speedRate = startProgress * startProgress
+  var vx = this.vx * speedRate
+  var vy = this.vy * speedRate
+  this.x += vx
+  this.y += vy
+  this.sprite.move(vx, vy)
+  if(this.tick_start >= this.START_TIME) {
+    this.func = this.func_normal
+    this.tick_start = undefined
+    this.tick_normal = 0
+    var tile_normal = this.tile.normal
+    this.sprite.size(tile_normal.size, tile_normal.size)
+    this.sprite.offset(tile_normal.x, tile_normal.y)
+    this.sprite.setOpacity(1)
+    this.sprite.scale(1, 1)
+    this.sprite.rotate(Math.PI - this.angle)
+    var halfTileSize = tile_normal.size / 2
+    this.sprite.setX(this.x - halfTileSize + Game.HALF_WIDTH)
+    this.sprite.setY(this.y - halfTileSize)
+  }
+  return true
+}
+Game.Bullet.prototype.disapear = function() {
+  var tile_end = this.tile.end
+  this.sprite.size(tile_end.size, tile_end.size)
+  this.sprite.offset(tile_end.x, tile_end.y)
+  this.sprite.setOpacity(1)
+  this.sprite.scale(1, 1)
+  this.sprite.setAngle(0)
+  var halfTileSize = tile_end.size / 2
+  this.sprite.setX(this.x - halfTileSize + Game.HALF_WIDTH)
+  this.sprite.setY(this.y - halfTileSize)
+  this.func = this.func_end
+  this.tick_end = 0
+}
+Game.Bullet.prototype.func_end = function() {
+  if(this.tick_end++ > this.END_TIME) {
+    return false
+  }
+  this.x += this.vx
+  this.y += this.vy
+  this.sprite.move(this.vx, this.vy)
+  var scale = 1 - this.tick_end/this.END_TIME
+  this.sprite.scale(scale, scale)
+  return true
+}
+Game.Bullet.prototype.setLifetime = function(lifetime) {
+  if(this.lifetime == undefined)
+    this.lifetime = lifetime
+}
+Game.Bullet.prototype.update = function() {
+  if(this.lifetime != undefined) {
+    if(this.lifetime > 0) {
+      --this.lifetime
+    } else if(this.lifetime == 0) {
+      this.disapear()
+      --this.lifetime
+    }
+  }  
+  if(!this.func() ||
+    this.x > this.X_MAX_LIMIT ||
+    this.x < this.X_MIN_LIMIT ||
+    this.y > this.Y_MAX_LIMIT ||
+    this.y < this.Y_MIN_LIMIT) {
+    this.sprite.remove()
+    return false
+  }
+  this.sprite.update()
+  return true
+}
+Game.keyboard = {}
+Game.keyboard.keys = {}
+Game.keyboard.init = function() {
+  var keys = this.keys
+  function updateKeyboard(code, val) {
+    if(code == 38) keys.up = val
+    else if(code == 40) keys.down = val
+    else if(code == 37) keys.left = val
+    else if(code == 39) keys.right = val
+    else if(code == 90) keys.z = val
+    else if(code == 88) keys.x = val
+    else if(code == 16) keys.shift = val
+  }
+  document.addEventListener('keydown',
+    function(e) {updateKeyboard(e.keyCode, true)}, false)
+  document.addEventListener('keyup',
+    function(e) {updateKeyboard(e.keyCode, false)}, false)
+  document.addEventListener('keypress',
+    function(e) {},false)
+  var keyboard = this
+  document.addEventListener('blur',
+    function(e) { keyboard.keys = {} },false)
+}
+</script>
+</html>
